@@ -424,13 +424,15 @@ void FReactRegressionTesterModule::RegisterSurfaceWithManager()
 	{
 		return;
 	}
-	const FVector2f Size = ReactSurface->GetCachedGeometry().GetLocalSize();
+	const FGeometry& CachedGeometry = ReactSurface->GetCachedGeometry();
+	const FVector2f Size = CachedGeometry.GetLocalSize();
+	const float Scale = CachedGeometry.Scale;
 	ReactNativeUnreal::FReactManager::Get().RegisterSurface(
 		ReactSurface->GetSurfaceId(),
 		static_cast<ReactNativeUnreal::IMountingDelegate*>(ReactSurface.Get()),
 		Size.X,
 		Size.Y,
-		FString());
+		Scale);
 }
 
 void FReactRegressionTesterModule::OnBundleAlive()
