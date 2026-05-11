@@ -1,0 +1,33 @@
+From 63c7c6481a479da0f09e8e18e07ed770e31adfb6 Mon Sep 17 00:00:00 2001
+From: etodanik <dannypovolotski@gmail.com>
+Date: Wed, 22 Apr 2026 23:40:11 +0300
+Subject: [PATCH] patch over a Rider solution generation bug
+
+---
+ .../ProjectFiles/Rider/RiderProjectFile.cs               | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/Engine/Source/Programs/UnrealBuildTool/ProjectFiles/Rider/RiderProjectFile.cs b/Engine/Source/Programs/UnrealBuildTool/ProjectFiles/Rider/RiderProjectFile.cs
+index c0f7f6408c3c..2714cbf8c496 100644
+--- a/Engine/Source/Programs/UnrealBuildTool/ProjectFiles/Rider/RiderProjectFile.cs
++++ b/Engine/Source/Programs/UnrealBuildTool/ProjectFiles/Rider/RiderProjectFile.cs
+@@ -104,8 +104,15 @@ namespace UnrealBuildTool
+ 
+ 						DirectoryReference ConfigurationFolder = DirectoryReference.Combine(ProjectRootFolder, Platform.ToString(), Configuration.ToString());
+ 
++						// Dirty temporary fix until this is resolved:
++						// https://youtrack.jetbrains.com/issue/RIDER-138269/uproject-with-Program-doesnt-correctly-load-modules
++						// Program and Game share the same solution configuration name (neither gets a suffix),
++						// so output Program target JSONs to the Game folder where Rider expects to find them.
++						string TargetTypeFolderName = ProjectTarget.TargetRules.Type == TargetType.Program
++							? TargetType.Game.ToString()
++							: ProjectTarget.TargetRules.Type.ToString();
+ 						DirectoryReference TargetFolder =
+-							DirectoryReference.Combine(ConfigurationFolder, ProjectTarget.TargetRules.Type.ToString());
++							DirectoryReference.Combine(ConfigurationFolder, TargetTypeFolderName);
+ 
+ 						UnrealArchitectures ProjectArchitectures = UEBuildPlatform
+ 							.GetBuildPlatform(Platform)
+-- 
+2.50.1 (Apple Git-155)
+

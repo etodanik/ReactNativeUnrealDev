@@ -1,0 +1,91 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Modules/ModuleManager.h"
+#include "Input/Reply.h"
+#include "Types/SlateEnums.h"
+#include "Containers/Ticker.h"
+
+class SReactSurface;
+class FUICommandList;
+class SDockTab;
+class FSpawnTabArgs;
+class SEditableTextBox;
+class STextBlock;
+class SWidgetSwitcher;
+class SButton;
+class SWidget;
+class STableViewBase;
+class ITableRow;
+template <typename OptionType> class SComboBox;
+
+namespace ReactNativeUnreal
+{
+class FReactManager;
+};
+
+enum class EReactTesterConnectionState : uint8
+{
+	Disconnected,
+	Connecting,
+	Connected,
+};
+
+class FReactRegressionTesterModule : public IModuleInterface
+{
+public:
+	/** IModuleInterface implementation */
+	virtual void StartupModule() override;
+	virtual void ShutdownModule() override;
+
+	/** This function will be bound to Command (by default it will bring up application window) */
+	void AppStarted();
+
+private:
+	TSharedRef<SDockTab> OnSpawnMainTab(const FSpawnTabArgs& SpawnTabArgs);
+
+	TSharedRef<SWidget> BuildAddressBar();
+	TSharedRef<SWidget> BuildModulesTab();
+	TSharedRef<SWidget> BuildTestsTab();
+
+	TSharedRef<ITableRow> OnGenerateTestRow(TSharedPtr<FString> Item, const TSharedRef<STableViewBase>& OwnerTable);
+	void OnTestSelectionChanged(TSharedPtr<FString> SelectedItem, ESelectInfo::Type SelectInfo);
+
+	TSharedRef<SWidget> OnGenerateModuleItem(TSharedPtr<FString> Item);
+	void OnModuleSelectionChanged(TSharedPtr<FString> SelectedItem, ESelectInfo::Type SelectInfo);
+	FText GetSelectedModuleText() const;
+
+	FReply OnConnectClicked();
+	FReply OnRunClicked();
+	void OnTabValueChanged(int32 NewIndex);
+
+	void SetConnectionState(EReactTesterConnectionState NewState);
+	bool ParseAddress(const FString& Input, FString& OutHost, uint32& OutPort) const;
+	void RegisterSurfaceWithManager();
+	void OnBundleAlive();
+	void RefreshModuleList();
+	void ConnectFlow();
+	bool OnRetryTick(float DeltaTime);
+
+private:
+	TSharedPtr<FUICommandList> AppCommands;
+	EReactTesterConnectionState ConnectionState = EReactTesterConnectionState::Disconnected;
+	FDelegateHandle BundleAliveHandle;
+	FTSTicker::FDelegateHandle RetryTickerHandle;
+
+	TSharedPtr<SEditableTextBox> AddressTextBox;
+	TSharedPtr<STextBlock> StatusText;
+	TSharedPtr<SButton> ConnectButton;
+	TSharedPtr<SWidgetSwitcher> TabSwitcher;
+
+	TSharedPtr<SReactSurface> ReactSurface;
+	TSharedPtr<SComboBox<TSharedPtr<FString>>> ModuleComboBox;
+	TArray<TSharedPtr<FString>> ModuleItems;
+	TSharedPtr<FString> SelectedModule;
+	bool bModuleQueryInFlight = false;
+
+	TArray<TSharedPtr<FString>> TestItems;
+	TSharedPtr<FString> SelectedTest;
+};

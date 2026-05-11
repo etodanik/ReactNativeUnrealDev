@@ -1,0 +1,15 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "../../Engine",
+	"AdditionalPluginDirectories": ["../../Plugins"],
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "ReactRegressionTesterModule",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"ProgramAllowList": ["ReactRegressionTester"]
+		}
+	]
+}

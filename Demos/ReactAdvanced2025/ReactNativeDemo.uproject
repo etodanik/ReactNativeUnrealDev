@@ -1,0 +1,25 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "../../Engine",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "ReactNativeDemo",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ModelingToolsEditorMode",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		}
+	],
+	"AdditionalPluginDirectories": [
+		"../../Plugins"
+	]
+}
