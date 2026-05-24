@@ -12,6 +12,14 @@
 	],
 	"Plugins": [
 		{
+			"Name": "React",
+			"Enabled": true
+		},
+		{
+			"Name": "Zwim",
+			"Enabled": true
+		},
+		{
 			"Name": "ModelingToolsEditorMode",
 			"Enabled": true,
 			"TargetAllowList": [

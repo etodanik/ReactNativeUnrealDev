@@ -30,6 +30,11 @@ static FString GSavedCommandLine;
 	[NSApp terminate: self];
 }
 
+- (void)applicationWillTerminate:(NSNotification*)Notification
+{
+	FTaskTagScope::SetTagStaticInit();
+}
+
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)Sender;
 {
 	if(!IsEngineExitRequested() || ([NSThread gameThread] && [NSThread gameThread] != [NSThread mainThread]))
@@ -56,6 +61,8 @@ static FString GSavedCommandLine;
 
 int main(int argc, char *argv[])
 {
+	FTaskTagScope::SetTagNone();
+
 	for (int32 Option = 1; Option < argc; Option++)
 	{
 		GSavedCommandLine += TEXT(" ");
