@@ -1,0 +1,38 @@
+From f7009e90a5044bd2f8633d724e121c5e3183cc94 Mon Sep 17 00:00:00 2001
+From: etodanik <dannypovolotski@gmail.com>
+Date: Wed, 15 Apr 2026 06:09:26 -0400
+Subject: [PATCH] UnrealBuildTool: Fix programs not under the Engine directory
+ failing to compile in Xcode if they're in a path that includes the string
+ "Programs".
+
+#14556
+
+#rb Josh.Adams
+#jira UE-371000
+#Synced-CL 52723323
+
+[CL 52725161 by etodanik in Dev-5.8 branch]
+
+(cherry picked from commit f7009e90a5044bd2f8633d724e121c5e3183cc94)
+---
+ .../UnrealBuildTool/ProjectFiles/Xcode/XcodeProject.File.cs   | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/Engine/Source/Programs/UnrealBuildTool/ProjectFiles/Xcode/XcodeProject.File.cs b/Engine/Source/Programs/UnrealBuildTool/ProjectFiles/Xcode/XcodeProject.File.cs
+index 3356dd04387d..84eb6dba6c6b 100644
+--- a/Engine/Source/Programs/UnrealBuildTool/ProjectFiles/Xcode/XcodeProject.File.cs
++++ b/Engine/Source/Programs/UnrealBuildTool/ProjectFiles/Xcode/XcodeProject.File.cs
+@@ -226,7 +226,9 @@ namespace UnrealBuildTool.XcodeProjectXcconfig
+ 
+ 		public void SetUProjectLocation(FileReference? UProjectLocation)
+ 		{
+-			RootDirectory = UProjectLocation == null || UProjectLocation.ContainsName("Programs", 0) ? (Unreal.EngineDirectory) : UProjectLocation!.Directory;
++			RootDirectory = UProjectLocation == null || (UProjectLocation.IsUnderDirectory(Unreal.EngineDirectory) && UProjectLocation.ContainsName("Programs", Unreal.EngineDirectory.FullName.Length))
++				? (Unreal.EngineDirectory)
++				: UProjectLocation!.Directory;
+ 		}
+ 
+ 		public void ProcessFile(XcodeSourceFile File, bool bIsForBuild, bool bIsFolder, string? GroupName = null, string ExtraResourceSettings = "", Dictionary<DirectoryReference, int>? SourceToBuildFileMap = null)
+-- 
+2.50.1 (Apple Git-155)
+

@@ -181,3 +181,5 @@ Tools/**.pyc
 # each developer can install the appropriate RiderLink version for their IDE
 /Demos/*/Plugins/Developer/
 /Demos/*/Plugins/Developer/RiderLink
+
+/Temp/
