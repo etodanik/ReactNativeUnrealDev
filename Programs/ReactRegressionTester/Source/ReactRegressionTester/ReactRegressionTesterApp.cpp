@@ -10,6 +10,7 @@
 #include "Styling/StarshipCoreStyle.h"
 
 #include "React.h"
+#include "StandaloneRenderer.h"
 
 IMPLEMENT_APPLICATION(ReactRegressionTester, "ReactRegressionTester");
 

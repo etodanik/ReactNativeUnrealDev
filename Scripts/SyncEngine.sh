@@ -17,7 +17,7 @@ PATCHES_DIR="${SCRIPT_DIR}/../Patches"
 # Check if Engine folder exists
 if [ ! -d "$ENGINE_DIR" ]; then
   echo "Engine folder not found. Cloning..."
-  git clone --branch 5.7.4-release --single-branch --depth 1 git@github.com:EpicGames/UnrealEngine.git "$ENGINE_DIR"
+  git clone --branch 5.8.0-release --single-branch --depth 1 git@github.com:EpicGames/UnrealEngine.git "$ENGINE_DIR"
 else
   echo "Engine folder exists. Pulling latest changes..."
   cd "$ENGINE_DIR" || exit 1
@@ -28,11 +28,11 @@ fi
 if [ -d "$PATCHES_DIR" ]; then
   echo "Applying patches..."
   cd "$ENGINE_DIR" || exit 1
-  
+
   for patch_file in "$PATCHES_DIR"/*.patch; do
     if [ -f "$patch_file" ]; then
       echo "Processing patch: $(basename "$patch_file")"
-      
+
       if git apply --reverse --check "$patch_file" 2>/dev/null; then
         echo "Patch already applied, skipping"
       elif git apply --check "$patch_file" 2>/dev/null; then
@@ -44,7 +44,7 @@ if [ -d "$PATCHES_DIR" ]; then
       fi
     fi
   done
-  
+
   echo "All patches applied successfully"
 else
   echo "No Patches directory found, skipping patch application"
