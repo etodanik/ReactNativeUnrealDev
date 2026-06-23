@@ -4,8 +4,8 @@
 #include "ReactRegressionTesterModule/Public/ReactRegressionTesterModuleStyle.h"
 #include "ReactRegressionTesterModule/Public/ReactRegressionTesterModuleCommands.h"
 
+#include "React.h"
 #include "ReactSurface.h"
-#include "ReactNative/ReactManager.h"
 
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Layout/SBox.h"
@@ -42,8 +42,8 @@ void FReactRegressionTesterModule::StartupModule()
 		.SetDisplayName(LOCTEXT("FReactRegressionTesterModuleTabTitle", "React Regression Tester"))
 		.SetMenuType(ETabSpawnerMenuType::Hidden);
 
-	BundleAliveHandle = ReactNativeUnreal::FReactManager::OnBundleAlive.AddRaw(
-		this, &FReactRegressionTesterModule::OnBundleAlive);
+	BundleAliveHandle = React::AddOnBundleAlive(FSimpleDelegate::CreateRaw(
+		this, &FReactRegressionTesterModule::OnBundleAlive));
 
 	// Placeholder scenarios for the Tests tab (will be replaced by publishManifest data later)
 	TestItems.Add(MakeShared<FString>(TEXT("Text Rendering")));
@@ -66,21 +66,34 @@ void FReactRegressionTesterModule::ShutdownModule()
 
 	if (BundleAliveHandle.IsValid())
 	{
-		ReactNativeUnreal::FReactManager::OnBundleAlive.Remove(BundleAliveHandle);
+		React::RemoveOnBundleAlive(BundleAliveHandle);
 		BundleAliveHandle.Reset();
 	}
 
 	ReactSurface.Reset();
 
-	FReactRegressionTesterModuleStyle::Shutdown();
+	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(ReactRegressionTesterModuleTabName);
+
+	AppCommands.Reset();
 
 	FReactRegressionTesterModuleCommands::Unregister();
 
-	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(ReactRegressionTesterModuleTabName);
+	FReactRegressionTesterModuleStyle::Shutdown();
 }
 
 TSharedRef<SDockTab> FReactRegressionTesterModule::OnSpawnMainTab(const FSpawnTabArgs& SpawnTabArgs)
 {
+	TSharedRef<SWidgetSwitcher> TabSwitcherRef =
+		SNew(SWidgetSwitcher)
+		.WidgetIndex(0)
+
+		+ SWidgetSwitcher::Slot()
+			[BuildModulesTab()]
+
+		+ SWidgetSwitcher::Slot()
+			[BuildTestsTab()];
+	TabSwitcher = TabSwitcherRef;
+
 	return SNew(SDockTab)
 		.TabRole(ETabRole::NomadTab)
 		.Label(LOCTEXT("MainTabLabel", "React Regression Tester"))
@@ -106,18 +119,28 @@ TSharedRef<SDockTab> FReactRegressionTesterModule::OnSpawnMainTab(const FSpawnTa
 				+ SVerticalBox::Slot()
 					.FillHeight(1.0f)
 					.Padding(4.0f)
-						[SAssignNew(TabSwitcher, SWidgetSwitcher)
-								.WidgetIndex(0)
-
-							+ SWidgetSwitcher::Slot()
-								[BuildModulesTab()]
-
-							+ SWidgetSwitcher::Slot()
-								[BuildTestsTab()]]];
+						[TabSwitcherRef]];
 }
 
 TSharedRef<SWidget> FReactRegressionTesterModule::BuildAddressBar()
 {
+	TSharedRef<SEditableTextBox> AddressTextBoxRef =
+		SNew(SEditableTextBox)
+		.Text(FText::FromString(TEXT("localhost:8081")))
+		.HintText(LOCTEXT("AddressHint", "host:port"));
+	AddressTextBox = AddressTextBoxRef;
+
+	TSharedRef<SButton> ConnectButtonRef =
+		SNew(SButton)
+		.Text(LOCTEXT("ConnectButton", "Connect"))
+		.OnClicked_Raw(this, &FReactRegressionTesterModule::OnConnectClicked);
+	ConnectButton = ConnectButtonRef;
+
+	TSharedRef<STextBlock> StatusTextRef =
+		SNew(STextBlock)
+		.Text(LOCTEXT("StatusDisconnected", "Disconnected"));
+	StatusText = StatusTextRef;
+
 	return SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
 		.Padding(4.0f)
@@ -138,27 +161,34 @@ TSharedRef<SWidget> FReactRegressionTesterModule::BuildAddressBar()
 								.FillWidth(1.0f)
 								.VAlign(VAlign_Center)
 								.Padding(4.0f, 0.0f)
-									[SAssignNew(AddressTextBox, SEditableTextBox)
-											.Text(FText::FromString(TEXT("localhost:8081")))
-											.HintText(LOCTEXT("AddressHint", "host:port"))]
+									[AddressTextBoxRef]
 
 							+ SHorizontalBox::Slot()
 								.AutoWidth()
 								.VAlign(VAlign_Center)
 								.Padding(4.0f, 0.0f)
-									[SAssignNew(ConnectButton, SButton)
-											.Text(LOCTEXT("ConnectButton", "Connect"))
-											.OnClicked_Raw(this, &FReactRegressionTesterModule::OnConnectClicked)]]
+									[ConnectButtonRef]]
 
 				+ SVerticalBox::Slot()
 					.AutoHeight()
 					.Padding(4.0f, 4.0f, 4.0f, 0.0f)
-						[SAssignNew(StatusText, STextBlock)
-								.Text(LOCTEXT("StatusDisconnected", "Disconnected"))]];
+						[StatusTextRef]];
 }
 
 TSharedRef<SWidget> FReactRegressionTesterModule::BuildModulesTab()
 {
+	TSharedRef<SComboBox<TSharedPtr<FString>>> ModuleComboBoxRef =
+		SNew(SComboBox<TSharedPtr<FString>>)
+		.OptionsSource(&ModuleItems)
+		.OnGenerateWidget_Raw(this, &FReactRegressionTesterModule::OnGenerateModuleItem)
+		.OnSelectionChanged_Raw(this, &FReactRegressionTesterModule::OnModuleSelectionChanged)
+			[SNew(STextBlock)
+					.Text_Raw(this, &FReactRegressionTesterModule::GetSelectedModuleText)];
+	ModuleComboBox = ModuleComboBoxRef;
+
+	TSharedRef<SReactSurface> ReactSurfaceRef = SNew(SReactSurface);
+	ReactSurface = ReactSurfaceRef;
+
 	return SNew(SVerticalBox)
 
 		+ SVerticalBox::Slot()
@@ -177,12 +207,7 @@ TSharedRef<SWidget> FReactRegressionTesterModule::BuildModulesTab()
 						.FillWidth(1.0f)
 						.VAlign(VAlign_Center)
 						.Padding(4.0f, 0.0f)
-							[SAssignNew(ModuleComboBox, SComboBox<TSharedPtr<FString>>)
-									.OptionsSource(&ModuleItems)
-									.OnGenerateWidget_Raw(this, &FReactRegressionTesterModule::OnGenerateModuleItem)
-									.OnSelectionChanged_Raw(this, &FReactRegressionTesterModule::OnModuleSelectionChanged)
-										[SNew(STextBlock)
-												.Text_Raw(this, &FReactRegressionTesterModule::GetSelectedModuleText)]]
+							[ModuleComboBoxRef]
 
 					+ SHorizontalBox::Slot()
 						.AutoWidth()
@@ -197,7 +222,7 @@ TSharedRef<SWidget> FReactRegressionTesterModule::BuildModulesTab()
 				[SNew(SBorder)
 						.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
 						.Padding(4.0f)
-							[SAssignNew(ReactSurface, SReactSurface)]];
+							[ReactSurfaceRef]];
 }
 
 TSharedRef<SWidget> FReactRegressionTesterModule::BuildTestsTab()
@@ -263,13 +288,13 @@ FReply FReactRegressionTesterModule::OnConnectClicked()
 	}
 	else
 	{
-		ReactNativeUnreal::FReactManager::Get().Shutdown();
+		React::Shutdown();
 		ModuleItems.Reset();
 		SelectedModule.Reset();
-		if (ModuleComboBox.IsValid())
+		if (TSharedPtr<SComboBox<TSharedPtr<FString>>> ModuleComboBoxPtr = ModuleComboBox.Pin())
 		{
-			ModuleComboBox->RefreshOptions();
-			ModuleComboBox->ClearSelection();
+			ModuleComboBoxPtr->RefreshOptions();
+			ModuleComboBoxPtr->ClearSelection();
 		}
 		SetConnectionState(EReactTesterConnectionState::Disconnected);
 	}
@@ -278,15 +303,16 @@ FReply FReactRegressionTesterModule::OnConnectClicked()
 
 void FReactRegressionTesterModule::ConnectFlow()
 {
-	const FString Input = AddressTextBox.IsValid() ? AddressTextBox->GetText().ToString() : FString();
+	const TSharedPtr<SEditableTextBox> AddressTextBoxPtr = AddressTextBox.Pin();
+	const FString Input = AddressTextBoxPtr.IsValid() ? AddressTextBoxPtr->GetText().ToString() : FString();
 
 	FString Host;
 	uint32 Port = 0;
 	if (!ParseAddress(Input, Host, Port))
 	{
-		if (StatusText.IsValid())
+		if (TSharedPtr<STextBlock> StatusTextPtr = StatusText.Pin())
 		{
-			StatusText->SetText(FText::Format(
+			StatusTextPtr->SetText(FText::Format(
 				LOCTEXT("StatusBadAddress", "Invalid address: '{0}' (expected host:port)"),
 				FText::FromString(Input)));
 		}
@@ -296,7 +322,7 @@ void FReactRegressionTesterModule::ConnectFlow()
 	SetConnectionState(EReactTesterConnectionState::Connecting);
 
 	const FTCHARToUTF8 HostUtf8(*Host);
-	ReactNativeUnreal::FReactManager::Reconnect("ReactRegressionTester", "Unreal", HostUtf8.Get(), Port);
+	React::Reconnect("ReactRegressionTester", "Unreal", HostUtf8.Get(), Port);
 	RegisterSurfaceWithManager();
 }
 
@@ -304,7 +330,7 @@ bool FReactRegressionTesterModule::OnRetryTick(float DeltaTime)
 {
 	if (ConnectionState == EReactTesterConnectionState::Connecting)
 	{
-		if (!ReactNativeUnreal::FReactManager::IsAvailable())
+		if (!React::IsAvailable())
 		{
 			// Initialize never succeeded (e.g., Metro unreachable). Retry.
 			ConnectFlow();
@@ -334,20 +360,21 @@ FReply FReactRegressionTesterModule::OnRunClicked()
 		UE_LOG(LogTemp, Warning, TEXT("[ReactRegressionTester] Run clicked with no module selected"));
 		return FReply::Handled();
 	}
-	if (!ReactSurface.IsValid())
+	TSharedPtr<SReactSurface> ReactSurfacePtr = ReactSurface.Pin();
+	if (!ReactSurfacePtr.IsValid())
 	{
 		return FReply::Handled();
 	}
 
-	ReactNativeUnreal::FReactManager::Get().RunApplication(ReactSurface->GetSurfaceId(), *SelectedModule);
+	React::RunApplication(*ReactSurfacePtr, *SelectedModule);
 	return FReply::Handled();
 }
 
 void FReactRegressionTesterModule::OnTabValueChanged(int32 NewIndex)
 {
-	if (TabSwitcher.IsValid())
+	if (TSharedPtr<SWidgetSwitcher> TabSwitcherPtr = TabSwitcher.Pin())
 	{
-		TabSwitcher->SetActiveWidgetIndex(NewIndex);
+		TabSwitcherPtr->SetActiveWidgetIndex(NewIndex);
 	}
 }
 
@@ -355,33 +382,33 @@ void FReactRegressionTesterModule::SetConnectionState(EReactTesterConnectionStat
 {
 	ConnectionState = NewState;
 
-	if (StatusText.IsValid())
+	if (TSharedPtr<STextBlock> StatusTextPtr = StatusText.Pin())
 	{
 		switch (NewState)
 		{
 		case EReactTesterConnectionState::Disconnected:
-			StatusText->SetText(LOCTEXT("StatusDisconnected", "Disconnected"));
+			StatusTextPtr->SetText(LOCTEXT("StatusDisconnected", "Disconnected"));
 			break;
 		case EReactTesterConnectionState::Connecting:
-			StatusText->SetText(LOCTEXT("StatusConnecting", "Connecting..."));
+			StatusTextPtr->SetText(LOCTEXT("StatusConnecting", "Connecting..."));
 			break;
 		case EReactTesterConnectionState::Connected:
-			StatusText->SetText(LOCTEXT("StatusConnected", "Connected"));
+			StatusTextPtr->SetText(LOCTEXT("StatusConnected", "Connected"));
 			break;
 		}
 	}
 
-	if (ConnectButton.IsValid())
+	if (TSharedPtr<SButton> ConnectButtonPtr = ConnectButton.Pin())
 	{
 		const FText ButtonText = NewState == EReactTesterConnectionState::Disconnected
 			? LOCTEXT("ConnectButton", "Connect")
 			: LOCTEXT("DisconnectButton", "Disconnect");
-		ConnectButton->SetContent(SNew(STextBlock).Text(ButtonText));
+		ConnectButtonPtr->SetContent(SNew(STextBlock).Text(ButtonText));
 	}
 
-	if (AddressTextBox.IsValid())
+	if (TSharedPtr<SEditableTextBox> AddressTextBoxPtrForState = AddressTextBox.Pin())
 	{
-		AddressTextBox->SetIsReadOnly(NewState != EReactTesterConnectionState::Disconnected);
+		AddressTextBoxPtrForState->SetIsReadOnly(NewState != EReactTesterConnectionState::Disconnected);
 	}
 }
 
@@ -420,19 +447,12 @@ bool FReactRegressionTesterModule::ParseAddress(const FString& Input, FString& O
 
 void FReactRegressionTesterModule::RegisterSurfaceWithManager()
 {
-	if (!ReactSurface.IsValid())
+	TSharedPtr<SReactSurface> ReactSurfacePtr = ReactSurface.Pin();
+	if (!ReactSurfacePtr.IsValid())
 	{
 		return;
 	}
-	const FGeometry& CachedGeometry = ReactSurface->GetCachedGeometry();
-	const FVector2f Size = CachedGeometry.GetLocalSize();
-	const float Scale = CachedGeometry.Scale;
-	ReactNativeUnreal::FReactManager::Get().RegisterSurface(
-		ReactSurface->GetSurfaceId(),
-		static_cast<ReactNativeUnreal::IMountingDelegate*>(ReactSurface.Get()),
-		Size.X,
-		Size.Y,
-		Scale);
+	React::RegisterSurface(*ReactSurfacePtr);
 }
 
 void FReactRegressionTesterModule::OnBundleAlive()
@@ -446,13 +466,13 @@ void FReactRegressionTesterModule::OnBundleAlive()
 
 void FReactRegressionTesterModule::RefreshModuleList()
 {
-	if (!ReactNativeUnreal::FReactManager::IsAvailable() || bModuleQueryInFlight)
+	if (!React::IsAvailable() || bModuleQueryInFlight)
 	{
 		return;
 	}
 	bModuleQueryInFlight = true;
 
-	ReactNativeUnreal::FReactManager::Get().QueryAppKeys(
+	React::QueryAppKeys(
 		[this](TArray<FString> Keys)
 		{
 			bModuleQueryInFlight = false;
@@ -502,16 +522,16 @@ void FReactRegressionTesterModule::RefreshModuleList()
 				SelectedModule = ModuleItems[0];
 			}
 
-			if (ModuleComboBox.IsValid())
+			if (TSharedPtr<SComboBox<TSharedPtr<FString>>> ModuleComboBoxPtr = ModuleComboBox.Pin())
 			{
-				ModuleComboBox->RefreshOptions();
+				ModuleComboBoxPtr->RefreshOptions();
 				if (SelectedModule.IsValid())
 				{
-					ModuleComboBox->SetSelectedItem(SelectedModule);
+					ModuleComboBoxPtr->SetSelectedItem(SelectedModule);
 				}
 				else
 				{
-					ModuleComboBox->ClearSelection();
+					ModuleComboBoxPtr->ClearSelection();
 				}
 			}
 		});

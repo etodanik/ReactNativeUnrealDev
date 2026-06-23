@@ -62,6 +62,8 @@ int RunReactRegressionTester(const TCHAR* CommandLine)
 		GFrameCounter++;
 	}
 
+	React::TearDown();
+
 	FCoreDelegates::OnExit.Broadcast();
 	FSlateApplication::Shutdown();
 	FModuleManager::Get().UnloadModulesAtShutdown();

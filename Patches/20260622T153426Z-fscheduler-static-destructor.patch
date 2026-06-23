@@ -1,0 +1,15 @@
+diff --git a/Engine/Source/Runtime/Core/Public/Async/Fundamental/Scheduler.h b/Engine/Source/Runtime/Core/Public/Async/Fundamental/Scheduler.h
+index 4a24d7296..ba1a4434d 100644
+--- a/Engine/Source/Runtime/Core/Public/Async/Fundamental/Scheduler.h
++++ b/Engine/Source/Runtime/Core/Public/Async/Fundamental/Scheduler.h
+@@ -220,6 +220,9 @@ namespace LowLevelTasks
+ 
+ 	inline FScheduler::~FScheduler()
+ 	{
+-		StopWorkers();
++		if (ActiveWorkers.load(std::memory_order_relaxed) != 0)
++		{
++			StopWorkers();
++		}
+ 	}
+ }

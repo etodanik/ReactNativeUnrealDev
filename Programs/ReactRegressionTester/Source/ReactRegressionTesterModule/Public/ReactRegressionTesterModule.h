@@ -21,11 +21,6 @@ class STableViewBase;
 class ITableRow;
 template <typename OptionType> class SComboBox;
 
-namespace ReactNativeUnreal
-{
-class FReactManager;
-};
-
 enum class EReactTesterConnectionState : uint8
 {
 	Disconnected,
@@ -75,13 +70,13 @@ private:
 	FDelegateHandle BundleAliveHandle;
 	FTSTicker::FDelegateHandle RetryTickerHandle;
 
-	TSharedPtr<SEditableTextBox> AddressTextBox;
-	TSharedPtr<STextBlock> StatusText;
-	TSharedPtr<SButton> ConnectButton;
-	TSharedPtr<SWidgetSwitcher> TabSwitcher;
+	TWeakPtr<SEditableTextBox> AddressTextBox;
+	TWeakPtr<STextBlock> StatusText;
+	TWeakPtr<SButton> ConnectButton;
+	TWeakPtr<SWidgetSwitcher> TabSwitcher;
 
-	TSharedPtr<SReactSurface> ReactSurface;
-	TSharedPtr<SComboBox<TSharedPtr<FString>>> ModuleComboBox;
+	TWeakPtr<SReactSurface> ReactSurface;
+	TWeakPtr<SComboBox<TSharedPtr<FString>>> ModuleComboBox;
 	TArray<TSharedPtr<FString>> ModuleItems;
 	TSharedPtr<FString> SelectedModule;
 	bool bModuleQueryInFlight = false;

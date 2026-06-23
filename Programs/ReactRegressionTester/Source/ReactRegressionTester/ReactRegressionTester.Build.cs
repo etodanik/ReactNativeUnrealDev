@@ -19,7 +19,8 @@ public class ReactRegressionTester : ModuleRules
 				"Slate",
 				"SlateCore",
 				"StandaloneRenderer",
-				"React"
+				"React",
+				"RNUETestHarness"
 			}
 		);
 

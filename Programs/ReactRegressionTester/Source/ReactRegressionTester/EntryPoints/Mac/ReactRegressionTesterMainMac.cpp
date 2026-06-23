@@ -2,12 +2,9 @@
 
 #include "ReactRegressionTester/ReactRegressionTesterApp.h"
 #include "Mac/MacProgramDelegate.h"
-
-static void ReactRegressionTesterExit()
-{
-}
+#include "LaunchEngineLoop.h"
 
 int main(int argc, char *argv[])
 {
-	return [MacProgramDelegate mainWithArgc:argc argv:argv programMain:RunReactRegressionTester programExit:ReactRegressionTesterExit];
+	return [MacProgramDelegate mainWithArgc:argc argv:argv programMain:RunReactRegressionTester programExit:FEngineLoop::AppExit];
 }
