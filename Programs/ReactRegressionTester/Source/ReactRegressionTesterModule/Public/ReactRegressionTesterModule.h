@@ -54,11 +54,12 @@ private:
 
 	FReply OnConnectClicked();
 	FReply OnRunClicked();
+	FReply OnScreenshotClicked();
 	void OnTabValueChanged(int32 NewIndex);
 
 	void SetConnectionState(EReactTesterConnectionState NewState);
+	bool CanTakeScreenshot() const;
 	bool ParseAddress(const FString& Input, FString& OutHost, uint32& OutPort) const;
-	void RegisterSurfaceWithManager();
 	void OnBundleAlive();
 	void RefreshModuleList();
 	void ConnectFlow();
@@ -73,12 +74,15 @@ private:
 	TWeakPtr<SEditableTextBox> AddressTextBox;
 	TWeakPtr<STextBlock> StatusText;
 	TWeakPtr<SButton> ConnectButton;
+	TWeakPtr<SButton> ScreenshotButton;
+	TWeakPtr<STextBlock> ScreenshotStatusText;
 	TWeakPtr<SWidgetSwitcher> TabSwitcher;
 
 	TWeakPtr<SReactSurface> ReactSurface;
 	TWeakPtr<SComboBox<TSharedPtr<FString>>> ModuleComboBox;
 	TArray<TSharedPtr<FString>> ModuleItems;
 	TSharedPtr<FString> SelectedModule;
+	FString LastRunModuleName;
 	bool bModuleQueryInFlight = false;
 
 	TArray<TSharedPtr<FString>> TestItems;

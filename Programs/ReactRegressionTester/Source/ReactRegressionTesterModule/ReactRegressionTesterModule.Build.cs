@@ -38,6 +38,8 @@ public class ReactRegressionTesterModule : ModuleRules
 			{
 				"InputCore",
 				"CoreUObject",
+				"ImageCore",
+				"ImageWrapper",
 				"Slate",
 				"SlateCore",
 				// ... add private dependencies that you statically link with here ...	

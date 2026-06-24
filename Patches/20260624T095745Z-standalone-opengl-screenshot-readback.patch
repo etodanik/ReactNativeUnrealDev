@@ -1,0 +1,140 @@
+diff --git a/Engine/Source/Developer/StandaloneRenderer/Private/OpenGL/SlateOpenGLRenderer.cpp b/Engine/Source/Developer/StandaloneRenderer/Private/OpenGL/SlateOpenGLRenderer.cpp
+index 175d70233..a19dbb357 100644
+--- a/Engine/Source/Developer/StandaloneRenderer/Private/OpenGL/SlateOpenGLRenderer.cpp
++++ b/Engine/Source/Developer/StandaloneRenderer/Private/OpenGL/SlateOpenGLRenderer.cpp
+@@ -108,6 +108,19 @@ void FSlateOpenGLRenderer::ReleaseDrawBuffer(FSlateDrawBuffer& InWindowDrawBuffe
+ 	InWindowDrawBuffer.Unlock();
+ }
+ 
++void FSlateOpenGLRenderer::PrepareToTakeScreenshot(const FIntRect& Rect, TArray<FColor>* OutColorData, SWindow* InScreenshotWindow)
++{
++	check(OutColorData);
++
++	ScreenshotState = {};
++
++	OutColorData->Reset();
++
++	ScreenshotState.ViewRect = Rect;
++	ScreenshotState.ColorData = OutColorData;
++	ScreenshotState.WindowToCapture = InScreenshotWindow;
++}
++
+ bool FSlateOpenGLRenderer::Initialize()
+ {
+ 	SharedContext.Initialize( NULL, NULL );
+@@ -196,6 +209,7 @@ void FSlateOpenGLRenderer::DrawWindows( FSlateDrawBuffer& InWindowDrawBuffer )
+ 					RenderingPolicy->DrawElements( ViewMatrix*Viewport->ProjectionMatrix, WindowSize, BatchData.GetRenderBatches() );
+ 				}
+ 
++				CapturePendingScreenshot( WindowToDraw, *Viewport );
+ 				Viewport->SwapBuffers();
+ 
+ 				// All elements have been drawn.  Reset all cached data
+@@ -210,6 +224,8 @@ void FSlateOpenGLRenderer::DrawWindows( FSlateDrawBuffer& InWindowDrawBuffer )
+ 
+ 	// Safely release the references now that we are finished rendering with the dynamic brushes
+ 	DynamicBrushesToRemove.Empty();
++
++	ScreenshotState = {};
+ }
+ 
+ 
+@@ -253,6 +269,66 @@ void FSlateOpenGLRenderer::Private_ResizeViewport( FVector2f WindowSize, FSlateO
+ 	InViewport.Resize( Width, Height, bFullscreen );
+ }
+ 
++void FSlateOpenGLRenderer::CapturePendingScreenshot( const SWindow* WindowToDraw, const FSlateOpenGLViewport& InViewport )
++{
++	if (ScreenshotState.WindowToCapture != WindowToDraw || !ScreenshotState.ColorData)
++	{
++		return;
++	}
++
++	TArray<FColor>* ColorData = ScreenshotState.ColorData;
++	const FIntRect ScreenshotRect = ScreenshotState.ViewRect;
++	ScreenshotState = {};
++
++	ColorData->Reset();
++
++	const int32 ViewportWidth = FMath::TruncToInt(InViewport.ViewportRect.Right - InViewport.ViewportRect.Left);
++	const int32 ViewportHeight = FMath::TruncToInt(InViewport.ViewportRect.Bottom - InViewport.ViewportRect.Top);
++	const FIntPoint OutputExtent(ViewportWidth, ViewportHeight);
++	FIntRect ViewRectClamped;
++	ViewRectClamped.Min = ScreenshotRect.Min;
++	ViewRectClamped.Max = ScreenshotRect.Max.ComponentMin(OutputExtent);
++	ViewRectClamped.Max = ScreenshotRect.Min.ComponentMax(ViewRectClamped.Max);
++
++	if (ViewRectClamped.IsEmpty())
++	{
++		return;
++	}
++
++	const int32 Width = ViewRectClamped.Width();
++	const int32 Height = ViewRectClamped.Height();
++	const int32 PixelCount = Width * Height;
++	TArray<uint8> RawPixels;
++	RawPixels.SetNumUninitialized(PixelCount * 4);
++
++	GLint PreviousPackAlignment = 0;
++	glGetIntegerv(GL_PACK_ALIGNMENT, &PreviousPackAlignment);
++	glPixelStorei(GL_PACK_ALIGNMENT, 1);
++	glReadPixels(ViewRectClamped.Min.X, ViewportHeight - ViewRectClamped.Max.Y, Width, Height, GL_RGBA, GL_UNSIGNED_BYTE, RawPixels.GetData());
++	const GLenum ReadError = glGetError();
++	glPixelStorei(GL_PACK_ALIGNMENT, PreviousPackAlignment);
++
++	if (ReadError != GL_NO_ERROR)
++	{
++		return;
++	}
++
++	ColorData->SetNumUninitialized(PixelCount);
++	for (int32 DestY = 0; DestY < Height; ++DestY)
++	{
++		const int32 SourceY = Height - 1 - DestY;
++		for (int32 X = 0; X < Width; ++X)
++		{
++			const int32 SourceIndex = (SourceY * Width + X) * 4;
++			(*ColorData)[DestY * Width + X] = FColor(
++				RawPixels[SourceIndex],
++				RawPixels[SourceIndex + 1],
++				RawPixels[SourceIndex + 2],
++				RawPixels[SourceIndex + 3]);
++		}
++	}
++}
++
+ void FSlateOpenGLRenderer::UpdateFullscreenState( const TSharedRef<SWindow> InWindow, uint32 OverrideResX, uint32 OverrideResY )
+ {
+ 	FSlateOpenGLViewport* Viewport = WindowToViewportMap.Find( &InWindow.Get() );
+diff --git a/Engine/Source/Developer/StandaloneRenderer/Private/OpenGL/SlateOpenGLRenderer.h b/Engine/Source/Developer/StandaloneRenderer/Private/OpenGL/SlateOpenGLRenderer.h
+index d1d4edf0e..69beeb849 100644
+--- a/Engine/Source/Developer/StandaloneRenderer/Private/OpenGL/SlateOpenGLRenderer.h
++++ b/Engine/Source/Developer/StandaloneRenderer/Private/OpenGL/SlateOpenGLRenderer.h
+@@ -175,6 +175,7 @@ public:
+ 	virtual int32 GetCurrentSceneIndex() const override;
+ 	virtual void SetCurrentSceneIndex(int32 InIndex) override;
+ 	virtual void ClearScenes() override;
++	virtual void PrepareToTakeScreenshot(const FIntRect& Rect, TArray<FColor>* OutColorData, SWindow* InScreenshotWindow) override;
+ 
+ protected:
+ 	virtual void RegisterCurrentScene_Impl(FSceneInterface* Scene) override;
+@@ -187,6 +188,7 @@ private:
+ 	 * @param InViewport    The viewport to resize
+ 	 */
+ 	void Private_ResizeViewport( FVector2f WindowSize, FSlateOpenGLViewport& InViewport, bool bFullscreen );
++	void CapturePendingScreenshot( const SWindow* WindowToDraw, const FSlateOpenGLViewport& InViewport );
+ private:
+ 	/** View matrix to use when rendering */
+ 	FMatrix ViewMatrix;
+@@ -206,5 +208,11 @@ private:
+ 	FSlateOpenGLContext SharedContext;
+ 	/** Dynamic image brushes to remove when safe */
+ 	TArray<TSharedPtr<FSlateDynamicImageBrush>> DynamicBrushesToRemove;
++	struct
++	{
++		FIntRect ViewRect;
++		TArray<FColor>* ColorData = nullptr;
++		const SWindow* WindowToCapture = nullptr;
++	} ScreenshotState;
+ 	FCriticalSection ResourceCriticalSection;
+ };

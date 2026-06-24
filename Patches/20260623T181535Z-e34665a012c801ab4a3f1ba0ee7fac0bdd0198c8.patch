@@ -1,0 +1,43 @@
+From e34665a012c801ab4a3f1ba0ee7fac0bdd0198c8 Mon Sep 17 00:00:00 2001
+From: etodanik <dannypovolotski@gmail.com>
+Date: Tue, 23 Jun 2026 14:15:35 -0400
+Subject: [PATCH] [Scheduler] - Fix potential assert during shutdown on certain
+ platforms
+
+#rb kevin.macaulayvacher
+#jira UE-385286
+#Synced-CL 55150955
+
+[CL 55419877 by etodanik in ue6-main branch]
+
+(cherry picked from commit e34665a012c801ab4a3f1ba0ee7fac0bdd0198c8)
+---
+ .../Runtime/Core/Private/Async/Fundamental/Scheduler.cpp | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/Engine/Source/Runtime/Core/Private/Async/Fundamental/Scheduler.cpp b/Engine/Source/Runtime/Core/Private/Async/Fundamental/Scheduler.cpp
+index 40b374741197..7df72d198d92 100644
+--- a/Engine/Source/Runtime/Core/Private/Async/Fundamental/Scheduler.cpp
++++ b/Engine/Source/Runtime/Core/Private/Async/Fundamental/Scheduler.cpp
+@@ -461,11 +461,16 @@ namespace LowLevelTasks
+ 
+ 	void FScheduler::StopWorkers(bool bDrainGlobalQueue)
+ 	{
+-		// It always been a given that only the game thread should stop workers so just add validation.
+-		check(IsInGameThread());
+ 		uint32 OldActiveWorkers = ActiveWorkers.load(std::memory_order_relaxed);
+ 		if (OldActiveWorkers != 0 && ActiveWorkers.compare_exchange_strong(OldActiveWorkers, 0, std::memory_order_relaxed))
+ 		{
++			// Only the game thread should stop workers.
++			// 
++			// Do the check if there are workers left to avoid doing it during static teardown.
++			// The scheduler static singleton and thread tagging teardown order isn't always consistent
++			// and could cause this check to fire on certain platforms.
++			check(IsInGameThread());
++
+ 			UE::TUniqueLock Lock(WorkerThreadsCS);
+ 
+ 			WaitingQueue[0].StartShutdown();
+-- 
+2.50.1 (Apple Git-155)
+

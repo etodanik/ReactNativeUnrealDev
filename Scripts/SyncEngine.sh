@@ -17,7 +17,7 @@ PATCHES_DIR="${SCRIPT_DIR}/../Patches"
 # Check if Engine folder exists
 if [ ! -d "$ENGINE_DIR" ]; then
   echo "Engine folder not found. Cloning..."
-  git clone --branch 5.8.0-release --single-branch --depth 1 git@github.com:EpicGames/UnrealEngine.git "$ENGINE_DIR"
+  git clone --branch 5.8.0-release git@github.com:EpicGames/UnrealEngine.git "$ENGINE_DIR"
 else
   echo "Engine folder exists. Pulling latest changes..."
   cd "$ENGINE_DIR" || exit 1

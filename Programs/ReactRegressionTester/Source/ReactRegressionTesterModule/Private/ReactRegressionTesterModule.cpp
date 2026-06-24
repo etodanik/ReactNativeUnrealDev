@@ -4,9 +4,12 @@
 #include "ReactRegressionTesterModule/Public/ReactRegressionTesterModuleStyle.h"
 #include "ReactRegressionTesterModule/Public/ReactRegressionTesterModuleCommands.h"
 
+#include "ReactRegressionScreenshot.h"
 #include "React.h"
 #include "ReactSurface.h"
 
+#include "Misc/DateTime.h"
+#include "Misc/Paths.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -70,6 +73,7 @@ void FReactRegressionTesterModule::ShutdownModule()
 		BundleAliveHandle.Reset();
 	}
 
+	LastRunModuleName.Reset();
 	ReactSurface.Reset();
 
 	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(ReactRegressionTesterModuleTabName);
@@ -189,6 +193,18 @@ TSharedRef<SWidget> FReactRegressionTesterModule::BuildModulesTab()
 	TSharedRef<SReactSurface> ReactSurfaceRef = SNew(SReactSurface);
 	ReactSurface = ReactSurfaceRef;
 
+	TSharedRef<SButton> ScreenshotButtonRef =
+		SNew(SButton)
+		.Text(LOCTEXT("ScreenshotButton", "Screenshot"))
+		.IsEnabled_Raw(this, &FReactRegressionTesterModule::CanTakeScreenshot)
+		.OnClicked_Raw(this, &FReactRegressionTesterModule::OnScreenshotClicked);
+	ScreenshotButton = ScreenshotButtonRef;
+
+	TSharedRef<STextBlock> ScreenshotStatusTextRef =
+		SNew(STextBlock)
+		.Text(FText::GetEmpty());
+	ScreenshotStatusText = ScreenshotStatusTextRef;
+
 	return SNew(SVerticalBox)
 
 		+ SVerticalBox::Slot()
@@ -215,7 +231,18 @@ TSharedRef<SWidget> FReactRegressionTesterModule::BuildModulesTab()
 						.Padding(4.0f, 0.0f)
 							[SNew(SButton)
 									.Text(LOCTEXT("RunButton", "Run"))
-									.OnClicked_Raw(this, &FReactRegressionTesterModule::OnRunClicked)]]
+									.OnClicked_Raw(this, &FReactRegressionTesterModule::OnRunClicked)]
+
+					+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(4.0f, 0.0f)
+							[ScreenshotButtonRef]]
+
+		+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(4.0f, 0.0f, 4.0f, 4.0f)
+				[ScreenshotStatusTextRef]
 
 		+ SVerticalBox::Slot()
 			.FillHeight(1.0f)
@@ -291,10 +318,15 @@ FReply FReactRegressionTesterModule::OnConnectClicked()
 		React::Shutdown();
 		ModuleItems.Reset();
 		SelectedModule.Reset();
+		LastRunModuleName.Reset();
 		if (TSharedPtr<SComboBox<TSharedPtr<FString>>> ModuleComboBoxPtr = ModuleComboBox.Pin())
 		{
 			ModuleComboBoxPtr->RefreshOptions();
 			ModuleComboBoxPtr->ClearSelection();
+		}
+		if (TSharedPtr<STextBlock> ScreenshotStatusTextPtr = ScreenshotStatusText.Pin())
+		{
+			ScreenshotStatusTextPtr->SetText(FText::GetEmpty());
 		}
 		SetConnectionState(EReactTesterConnectionState::Disconnected);
 	}
@@ -303,6 +335,12 @@ FReply FReactRegressionTesterModule::OnConnectClicked()
 
 void FReactRegressionTesterModule::ConnectFlow()
 {
+	LastRunModuleName.Reset();
+	if (TSharedPtr<STextBlock> ScreenshotStatusTextPtr = ScreenshotStatusText.Pin())
+	{
+		ScreenshotStatusTextPtr->SetText(FText::GetEmpty());
+	}
+
 	const TSharedPtr<SEditableTextBox> AddressTextBoxPtr = AddressTextBox.Pin();
 	const FString Input = AddressTextBoxPtr.IsValid() ? AddressTextBoxPtr->GetText().ToString() : FString();
 
@@ -323,7 +361,7 @@ void FReactRegressionTesterModule::ConnectFlow()
 
 	const FTCHARToUTF8 HostUtf8(*Host);
 	React::Reconnect("ReactRegressionTester", "Unreal", HostUtf8.Get(), Port);
-	RegisterSurfaceWithManager();
+	React::LoadScript();
 }
 
 bool FReactRegressionTesterModule::OnRetryTick(float DeltaTime)
@@ -367,6 +405,59 @@ FReply FReactRegressionTesterModule::OnRunClicked()
 	}
 
 	React::RunApplication(*ReactSurfacePtr, *SelectedModule);
+	LastRunModuleName = *SelectedModule;
+	if (TSharedPtr<STextBlock> ScreenshotStatusTextPtr = ScreenshotStatusText.Pin())
+	{
+		ScreenshotStatusTextPtr->SetText(FText::Format(
+			LOCTEXT("ScreenshotReady", "Screenshot ready for {0}"),
+			FText::FromString(LastRunModuleName)));
+	}
+	return FReply::Handled();
+}
+
+FReply FReactRegressionTesterModule::OnScreenshotClicked()
+{
+	if (!CanTakeScreenshot())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ReactRegressionTester] Screenshot clicked before a module was run"));
+		return FReply::Handled();
+	}
+
+	TSharedPtr<SReactSurface> ReactSurfacePtr = ReactSurface.Pin();
+	if (!ReactSurfacePtr.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ReactRegressionTester] Screenshot clicked with no valid React surface"));
+		return FReply::Handled();
+	}
+
+	const FString SanitizedModuleName = FPaths::MakeValidFileName(LastRunModuleName, TCHAR('_'));
+	const FString ScreenshotModuleName = SanitizedModuleName.IsEmpty() ? TEXT("ReactSurface") : SanitizedModuleName;
+	const FString Timestamp = FDateTime::UtcNow().ToString(TEXT("%Y%m%dT%H%M%SZ"));
+	const FString OutputDir = FPaths::ProjectSavedDir() / TEXT("Screenshots") / TEXT("ReactRegressionTester");
+	const FString OutputPath = OutputDir / FString::Printf(TEXT("%s-%s.png"), *ScreenshotModuleName, *Timestamp);
+
+	FString Error;
+	if (ReactRegressionScreenshot::SaveSurfaceToPng(ReactSurfacePtr.ToSharedRef(), OutputPath, Error))
+	{
+		UE_LOG(LogTemp, Display, TEXT("[ReactRegressionTester] Saved screenshot: %s"), *OutputPath);
+		if (TSharedPtr<STextBlock> ScreenshotStatusTextPtr = ScreenshotStatusText.Pin())
+		{
+			ScreenshotStatusTextPtr->SetText(FText::Format(
+				LOCTEXT("ScreenshotSaved", "Saved screenshot: {0}"),
+				FText::FromString(OutputPath)));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ReactRegressionTester] Failed to save screenshot: %s"), *Error);
+		if (TSharedPtr<STextBlock> ScreenshotStatusTextPtr = ScreenshotStatusText.Pin())
+		{
+			ScreenshotStatusTextPtr->SetText(FText::Format(
+				LOCTEXT("ScreenshotFailed", "Screenshot failed: {0}"),
+				FText::FromString(Error)));
+		}
+	}
+
 	return FReply::Handled();
 }
 
@@ -412,6 +503,13 @@ void FReactRegressionTesterModule::SetConnectionState(EReactTesterConnectionStat
 	}
 }
 
+bool FReactRegressionTesterModule::CanTakeScreenshot() const
+{
+	return ConnectionState == EReactTesterConnectionState::Connected
+		&& ReactSurface.Pin().IsValid()
+		&& !LastRunModuleName.IsEmpty();
+}
+
 bool FReactRegressionTesterModule::ParseAddress(const FString& Input, FString& OutHost, uint32& OutPort) const
 {
 	const FString Trimmed = Input.TrimStartAndEnd();
@@ -443,16 +541,6 @@ bool FReactRegressionTesterModule::ParseAddress(const FString& Input, FString& O
 	OutHost = Trimmed;
 	OutPort = 8081;
 	return true;
-}
-
-void FReactRegressionTesterModule::RegisterSurfaceWithManager()
-{
-	TSharedPtr<SReactSurface> ReactSurfacePtr = ReactSurface.Pin();
-	if (!ReactSurfacePtr.IsValid())
-	{
-		return;
-	}
-	React::RegisterSurface(*ReactSurfacePtr);
 }
 
 void FReactRegressionTesterModule::OnBundleAlive()
