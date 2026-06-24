@@ -13,7 +13,12 @@
 
 namespace ReactRegressionScreenshot
 {
-bool SaveSurfaceToPng(const TSharedRef<SReactSurface>& Surface, const FString& OutputPath, FString& OutError)
+bool SaveSurfaceToPng(
+	const TSharedRef<SReactSurface>& Surface,
+	const FString& OutputPath,
+	FString& OutError,
+	FIntPoint* OutSize,
+	const FIntPoint* TargetSize)
 {
 	TArray<FColor> Pixels;
 	FIntVector Size;
@@ -41,11 +46,35 @@ bool SaveSurfaceToPng(const TSharedRef<SReactSurface>& Surface, const FString& O
 		return false;
 	}
 
-	FImageCore::SetAlphaOpaque(FImageView(Pixels.GetData(), Size.X, Size.Y));
+	FImageView ImageView(Pixels.GetData(), Size.X, Size.Y);
+	FImage ResizedImage;
+	FIntPoint OutputSize(Size.X, Size.Y);
+	if (TargetSize && TargetSize->X > 0 && TargetSize->Y > 0 && OutputSize != *TargetSize)
+	{
+		const int64 SourceAspect = static_cast<int64>(OutputSize.X) * TargetSize->Y;
+		const int64 TargetAspect = static_cast<int64>(OutputSize.Y) * TargetSize->X;
+		if (SourceAspect != TargetAspect)
+		{
+			OutError = FString::Printf(
+				TEXT("Captured %dx%d, cannot normalize to expected %dx%d because the aspect ratios differ."),
+				OutputSize.X,
+				OutputSize.Y,
+				TargetSize->X,
+				TargetSize->Y);
+			return false;
+		}
+
+		ResizedImage.Init(TargetSize->X, TargetSize->Y, ERawImageFormat::BGRA8, EGammaSpace::sRGB);
+		FImageCore::ResizeImage(ImageView, ResizedImage);
+		ImageView = ResizedImage;
+		OutputSize = *TargetSize;
+	}
+
+	FImageCore::SetAlphaOpaque(ImageView);
 
 	TArray64<uint8> PngBytes;
 	IImageWrapperModule& ImageWrapper = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
-	if (!ImageWrapper.CompressImage(PngBytes, EImageFormat::PNG, FImageView(Pixels.GetData(), Size.X, Size.Y)))
+	if (!ImageWrapper.CompressImage(PngBytes, EImageFormat::PNG, ImageView))
 	{
 		OutError = TEXT("Failed to encode React surface screenshot as PNG.");
 		return false;
@@ -62,6 +91,11 @@ bool SaveSurfaceToPng(const TSharedRef<SReactSurface>& Surface, const FString& O
 	{
 		OutError = FString::Printf(TEXT("Failed to write screenshot: %s"), *OutputPath);
 		return false;
+	}
+
+	if (OutSize)
+	{
+		*OutSize = OutputSize;
 	}
 
 	return true;

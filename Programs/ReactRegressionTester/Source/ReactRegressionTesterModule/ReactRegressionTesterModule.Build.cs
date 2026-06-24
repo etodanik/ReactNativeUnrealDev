@@ -28,6 +28,7 @@ public class ReactRegressionTesterModule : ModuleRules
 			{
 				"Core",
 				"React",
+				"RNUETestHarness",
 				// ... add other public dependencies that you statically link with here ...
 			}
 		);
@@ -42,6 +43,7 @@ public class ReactRegressionTesterModule : ModuleRules
 				"ImageWrapper",
 				"Slate",
 				"SlateCore",
+				"Json",
 				// ... add private dependencies that you statically link with here ...	
 			}
 		);
