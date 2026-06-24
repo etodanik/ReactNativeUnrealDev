@@ -12,6 +12,10 @@
 #include "React.h"
 #include "StandaloneRenderer.h"
 
+#if PLATFORM_MAC
+#include "Mac/CocoaThread.h"
+#endif
+
 IMPLEMENT_APPLICATION(ReactRegressionTester, "ReactRegressionTester");
 
 #define LOCTEXT_NAMESPACE "ReactRegressionTester"
@@ -62,10 +66,16 @@ int RunReactRegressionTester(const TCHAR* CommandLine)
 		GFrameCounter++;
 	}
 
-	React::TearDown();
-
 	FCoreDelegates::OnExit.Broadcast();
+#if PLATFORM_MAC
+	// The Mac standalone OpenGL renderer posts SwapBuffers follow-up work to
+	// the AppKit run loop. Cmd+Q can exit the game loop immediately after a
+	// Slate tick, so use a synchronous empty call as a barrier before Slate
+	// shutdown frees the renderer's viewport map.
+	MainThreadCall(^{}, true);
+#endif
 	FSlateApplication::Shutdown();
+	React::TearDown();
 	FModuleManager::Get().UnloadModulesAtShutdown();
 
 	GEngineLoop.AppPreExit();
